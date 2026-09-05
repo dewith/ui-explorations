@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cendero — spray study</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header><div><span class="eyebrow">CENDERO / MATERIAL STUDY 01</span><h1>Paint, not pixels.</h1></div><span class="tag">Canvas · static · size-aware</span></header>
+  <section class="workspace">
+    <div class="artboard">
+      <div class="compare-controls" role="group" aria-label="Reference comparison">
+        <button data-mode="paint" aria-pressed="true">Our paint</button>
+        <button data-mode="split" aria-pressed="false">Split comparison</button>
+        <button data-mode="reference" aria-pressed="false">Figma</button>
+      </div>
+      <div class="stage" id="stage">
+        <div id="composition">
+          <canvas id="hero" aria-label="JavaScript spray-painted star"></canvas>
+          <div id="referenceHero" aria-label="Original Figma reference" hidden>
+            <img src="assets/reference-base.svg" alt=""><img src="assets/reference-light.svg" alt="" class="light-layer">
+          </div>
+          <div id="divider" hidden></div>
+        </div>
+      </div>
+      <div class="caption"><span id="comparisonLabel">JavaScript rendering</span><span id="renderInfo" aria-live="polite"></span></div>
+    </div>
+    <aside>
+      <div class="aside-heading"><h2>Paint settings</h2><button id="reset">Reset</button></div>
+      <label>Finish<select id="finish"><option value="airbrush">Airbrush · layered paint</option><option value="scatter">Earlier · scattered edge</option></select></label>
+      <label>Blur amount <output id="softnessValue"></output><input id="softness" type="range" min="0" max="2.6" step="0.05" value="2.6"></label>
+      <label>Overspray <output id="sprayValue"></output><input id="spray" type="range" min="0.3" max="1.8" step="0.05" value="1.25"></label>
+      <label>Color-dodge grain <output id="grainValue"></output><input id="grain" type="range" min="0" max="1.8" step="0.05" value="1.1"></label>
+      <label>Core size <output id="coreValue"></output><input id="core" type="range" min="0.5" max="1.5" step="0.05" value="1"></label>
+      <label>Core blur <output id="coreBlurValue"></output><input id="coreBlur" type="range" min="0" max="2.6" step="0.05" value="2.6"></label>
+      <label>Backdrop<select id="backdrop"><option value="dark">Charcoal</option><option value="black">Black</option><option value="checker">Transparency</option><option value="light">Paper</option></select></label>
+      <button class="primary" id="reseed">New spray pattern</button>
+      <button id="export">Export transparent PNG</button>
+      <details><summary>Figma reference</summary><div class="reference"><img src="assets/reference-base.svg" alt="Figma base paint layer"><img src="assets/reference-light.svg" alt="" class="light-layer"></div><a href="https://www.figma.com/design/ZLaHkLvid2V2wzdhkm16MO/Apps?node-id=275-351" target="_blank" rel="noreferrer">Open source ↗</a></details>
+    </aside>
+  </section>
+  <section class="sizes"><div class="section-heading"><h2>Optically tuned. Actual sizes.</h2><span>Each size is rendered independently.</span></div><div id="sizeGrid"></div></section>
+  <footer><span>Soft edges · warm core · luminous grain</span><span id="seedLabel"></span></footer>
+</main>
+<script type="module" src="study.js?v=approved-preset"></script>
+</body></html>
