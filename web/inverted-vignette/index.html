@@ -1,0 +1,925 @@
+<title>Inverted Vignette</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --void:      #07070c;
+  --panel:     #0e0e16;
+  --edge:      #212130;
+  --edge-soft: #191924;
+  --ink:       #eeedf5;
+  --ink-soft:  #9b99b2;
+  --ink-faint: #6a6880;
+  --accent:    #8b7cff;
+
+  --body: "Manrope", -apple-system, "Segoe UI", sans-serif;
+  --mono: "DM Mono", ui-monospace, "SF Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 72px;
+        display: flex; flex-direction: column; gap: 32px; }
+
+header { display: flex; flex-direction: column; gap: 8px; }
+.eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.15em;
+           text-transform: uppercase; color: var(--ink-faint); }
+h1 { font-size: 27px; font-weight: 600; letter-spacing: -0.025em; margin: 0; line-height: 1.1; }
+.dek { margin: 0; max-width: 62ch; color: var(--ink-soft); font-size: 15px; }
+.ic { font-family: var(--mono); font-size: 0.87em; color: var(--accent); }
+
+.lab { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; align-items: start; }
+@media (max-width: 820px) { .lab { grid-template-columns: minmax(0, 1fr); } }
+
+.stage {
+  display: grid; place-items: center;
+  padding: 40px 20px 30px;
+  border-radius: 18px;
+  border: 1px solid rgba(127, 127, 140, 0.22);
+  background: var(--stage-bg, #34343f);
+  transition: background 200ms ease;
+}
+.stage[data-bg="dark"]  { --stage-bg: #0a0a10; }
+.stage[data-bg="mid"]   { --stage-bg: #34343f; }
+.stage[data-bg="light"] { --stage-bg: #d5d5dd; }
+
+/* ---------- the screen ---------- */
+
+.screen {
+  position: relative;
+  width: min(316px, 100%);
+  aspect-ratio: 316 / 684;
+  border-radius: var(--r);
+  overflow: hidden;
+  isolation: isolate;
+  background: #000;
+  --star-scale: 1;
+}
+
+/* one full stack per screen state. A sits underneath at full opacity and B
+   fades in over it, so the crossfade never dips through a darker midpoint. */
+.layer { position: absolute; inset: 0; isolation: isolate; }
+.layer[data-set="b"] { opacity: 0; transition: opacity var(--tdur) var(--tease); }
+.screen[data-state="rest"] .layer[data-set="b"] { opacity: 1; }
+
+/* the deepest plate: the lightest colour in the palette. in knockout mode the
+   star is a hole in everything above it, so it IS this colour by construction */
+.base { position: absolute; inset: 0; background: var(--base-col); }
+
+/* the two gradient layers, grouped so one mask can cut through both */
+.knock { position: absolute; inset: 0; }
+
+/* bleeds past the clip so displacement never pulls in empty pixels */
+.field {
+  position: absolute;
+  inset: calc(-1 * var(--bleed));
+  border-radius: calc(var(--r) + var(--bleed));
+  background: var(--core);
+  box-shadow: var(--rim);
+  filter: url(#warp);
+}
+
+/* inset shadows paint below children, so the veil has to be a child */
+.veil { position: absolute; inset: 0; border-radius: inherit;
+        background: var(--veil); pointer-events: none; }
+
+.starwrap {
+  position: absolute;
+  left: var(--star-x);
+  top: var(--star-y);
+  width: var(--star-w);
+  transform: translate(-50%, -50%) rotate(var(--star-rot)) scale(var(--star-scale));
+  opacity: var(--star-op);
+  mix-blend-mode: var(--star-blend);
+  pointer-events: none;
+  /* promotes the layer so the scale composites a cached raster instead of
+     re-running feTurbulence every frame, which made the grain crawl */
+  will-change: transform;
+  transition: transform var(--tdur) var(--tease) var(--star-lag);
+}
+.screen[data-state="rest"] { --star-scale: var(--star-collapse); }
+.starwrap svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.maskdefs { position: absolute; width: 0; height: 0; overflow: visible; }
+
+.grain { position: absolute; inset: 0; width: 100%; height: 100%;
+         border-radius: inherit; pointer-events: none;
+         opacity: var(--grain-op); mix-blend-mode: var(--grain-blend); }
+
+@media (prefers-reduced-motion: reduce) {
+  .layer[data-set="b"], .starwrap { transition: none; }
+}
+
+/* ---------- state bar ---------- */
+
+.statebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            justify-content: center; margin-top: 22px; }
+.togglelbl { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px;
+             color: var(--ink-soft); cursor: pointer; }
+.togglelbl input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+/* ---------- controls ---------- */
+
+.controls { background: var(--panel); border: 1px solid var(--edge); border-radius: 15px;
+            padding: 18px; display: flex; flex-direction: column; gap: 17px;
+            position: sticky; top: 18px; }
+
+.editing { display: flex; flex-direction: column; gap: 9px;
+           padding-bottom: 15px; border-bottom: 1px solid var(--edge); }
+.editing .lbl { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+                text-transform: uppercase; color: var(--ink-faint); }
+
+.grp { display: flex; flex-direction: column; gap: 11px; }
+.grp-h { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+         text-transform: uppercase; color: var(--ink-faint);
+         padding-bottom: 6px; border-bottom: 1px solid var(--edge-soft);
+         display: flex; align-items: center; justify-content: space-between; gap: 8px;
+         cursor: pointer; user-select: none; }
+.grp-h:hover { color: var(--ink-soft); }
+.grp-h:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+.grp-h::after { content: "\2212"; font-size: 13px; line-height: 1; opacity: 0.7; }
+.grp.collapsed > .grp-h::after { content: "+"; }
+.grp.collapsed > *:not(.grp-h) { display: none; }
+.grp.collapsed { gap: 0; }
+
+.swatchrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.swatchrow label { font-size: 13px; color: var(--ink-soft); }
+.swatchrow .val { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+input[type="color"] { -webkit-appearance: none; appearance: none; width: 46px; height: 28px;
+  padding: 0; background: transparent; border: 1px solid var(--edge);
+  border-radius: 7px; cursor: pointer; }
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 5px; }
+input[type="color"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.ctl { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+.ctl label { font-size: 13px; color: var(--ink-soft); }
+.ctl output { font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.ctl input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.ctl input[type="range"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* marks a control that holds a different value per screen */
+label.ps::before,
+.ps > label::before {
+  content: "\25CF"; color: var(--accent); font-size: 7px;
+  vertical-align: 2px; margin-right: 6px;
+}
+
+select { width: 100%; font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+         background: #14141f; border: 1px solid var(--edge); border-radius: 8px;
+         padding: 7px 9px; cursor: pointer; }
+select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.seg { display: flex; background: #14141f; border: 1px solid var(--edge);
+       border-radius: 9px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.03em;
+              color: var(--ink-soft); background: transparent; border: 0; cursor: pointer;
+              padding: 6px 4px; border-radius: 6px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #0b0a18; }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.statebar .seg { width: auto; }
+.statebar .seg button { padding: 7px 15px; font-size: 11px; }
+
+.hint { font-size: 11.5px; color: var(--ink-faint); margin: 0; line-height: 1.45; }
+.legend { font-size: 11.5px; color: var(--ink-faint); margin: 0; }
+.legend b { color: var(--accent); font-weight: 400; }
+
+.code-head { display: flex; align-items: center; justify-content: space-between;
+             gap: 16px; margin-bottom: 12px; }
+.code-head h2 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.copy { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.05em;
+        text-transform: uppercase; border: 1px solid var(--edge); background: transparent;
+        color: var(--ink-soft); border-radius: 7px; padding: 6px 12px; cursor: pointer; }
+.copy:hover { color: var(--accent); border-color: var(--accent); }
+.copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+pre { margin: 0; background: var(--panel); border: 1px solid var(--edge);
+      border-radius: 13px; padding: 18px; overflow-x: auto;
+      font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+pre .p { color: var(--accent); }
+pre .c { color: var(--ink-faint); }
+
+.toast { position: fixed; bottom: 22px; left: 50%;
+         transform: translateX(-50%) translateY(8px);
+         background: var(--ink); color: var(--void); font-size: 13px;
+         padding: 9px 18px; border-radius: 999px; opacity: 0;
+         transition: opacity .18s ease, transform .18s ease; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Cendero &middot; chat surface</div>
+    <h1>Inverted vignette</h1>
+    <p class="dek">Two complete colour stacks, one per screen state. Resting sits on top and fades in, so going black is a crossfade between palettes rather than a filter draining the blues &mdash; which means the greys are yours to pick, not whatever luminance happens to fall out.</p>
+  </header>
+
+  <div class="lab">
+    <div class="stage" id="stage" data-bg="mid">
+      <div class="screen" id="screen" data-state="active">
+
+        <div class="layer" data-set="a" id="layer-a">
+          <div class="base"></div>
+          <div class="knock" id="knock-a">
+            <div class="field"></div>
+            <div class="veil"></div>
+          </div>
+          <svg class="maskdefs" aria-hidden="true"><defs>
+            <mask id="knockMaskA" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"></mask>
+          </defs></svg>
+          <div class="starwrap">
+            <svg viewBox="0 0 767 710" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <linearGradient id="starGradA" x1="0.1" y1="0" x2="0.35" y2="0.95">
+                  <stop id="sgA0" offset="0" stop-color="#1500FF"></stop>
+                  <stop id="sgA1" offset="0.2" stop-color="#9E73F8"></stop>
+                  <stop id="sgA2" offset="0.98" stop-color="#C9BEFF" stop-opacity="0.5"></stop>
+                </linearGradient>
+                <filter id="starFxA" x="-70%" y="-70%" width="240%" height="240%" color-interpolation-filters="sRGB"></filter>
+              </defs>
+              <g id="starGA" filter="url(#starFxA)" fill="url(#starGradA)" fill-opacity="0.40">
+                <use href="#starPaths"></use>
+              </g>
+            </svg>
+          </div>
+          <svg class="grain" id="grainSvgA" preserveAspectRatio="none" aria-hidden="true">
+            <defs><filter id="grainA" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"></filter></defs>
+            <rect width="100%" height="100%" fill="#000" filter="url(#grainA)"></rect>
+          </svg>
+        </div>
+
+        <div class="layer" data-set="b" id="layer-b">
+          <div class="base"></div>
+          <div class="knock" id="knock-b">
+            <div class="field"></div>
+            <div class="veil"></div>
+          </div>
+          <svg class="maskdefs" aria-hidden="true"><defs>
+            <mask id="knockMaskB" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse"></mask>
+          </defs></svg>
+          <div class="starwrap">
+            <svg viewBox="0 0 767 710" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <linearGradient id="starGradB" x1="0.1" y1="0" x2="0.35" y2="0.95">
+                  <stop id="sgB0" offset="0" stop-color="#000000"></stop>
+                  <stop id="sgB1" offset="0.2" stop-color="#3E3E48"></stop>
+                  <stop id="sgB2" offset="0.98" stop-color="#8A8A96" stop-opacity="0.5"></stop>
+                </linearGradient>
+                <filter id="starFxB" x="-70%" y="-70%" width="240%" height="240%" color-interpolation-filters="sRGB"></filter>
+              </defs>
+              <g id="starGB" filter="url(#starFxB)" fill="url(#starGradB)" fill-opacity="0.40">
+                <use href="#starPaths"></use>
+              </g>
+            </svg>
+          </div>
+          <svg class="grain" id="grainSvgB" preserveAspectRatio="none" aria-hidden="true">
+            <defs><filter id="grainB" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"></filter></defs>
+            <rect width="100%" height="100%" fill="#000" filter="url(#grainB)"></rect>
+          </svg>
+        </div>
+
+      </div>
+
+      <div class="statebar">
+        <div class="seg" role="group" aria-label="Screen state">
+          <button type="button" id="st-active" aria-pressed="true">MODEL&rsquo;S TURN</button>
+          <button type="button" id="st-rest" aria-pressed="false">RESTING</button>
+        </div>
+        <label class="togglelbl"><input type="checkbox" id="cycle"> Cycle</label>
+        <div class="seg" role="group" aria-label="Stage backdrop">
+          <button type="button" id="bg-dark" aria-pressed="false">DARK</button>
+          <button type="button" id="bg-mid" aria-pressed="true">MID</button>
+          <button type="button" id="bg-light" aria-pressed="false">LIGHT</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="controls">
+
+      <div class="editing">
+        <div class="lbl">Editing</div>
+        <div class="seg" role="group" aria-label="Which screen these values apply to">
+          <button type="button" id="ed-a" aria-pressed="true">MODEL&rsquo;S TURN</button>
+          <button type="button" id="ed-b" aria-pressed="false">RESTING</button>
+        </div>
+        <p class="legend"><b>&#9679;</b> marks a control that holds its own value per screen. Everything else is shared geometry.</p>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">Colours</div>
+        <div class="swatchrow ps"><label for="c1">Edge</label>
+          <span class="val" id="c1-v">#C9BEFF</span><input type="color" id="c1" value="#c9beff"></div>
+        <div class="swatchrow ps"><label for="cm">Mid</label>
+          <span class="val" id="cm-v">#9E73F8</span><input type="color" id="cm" value="#9e73f8"></div>
+        <div class="swatchrow ps"><label for="c2">Core</label>
+          <span class="val" id="c2-v">#1500FF</span><input type="color" id="c2" value="#1500ff"></div>
+        <p class="hint">Bands are interpolated edge &rarr; mid &rarr; core in OKLab, so the ramp keeps its chroma instead of sagging grey between stops.</p>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">Ramp</div>
+        <div class="ctl"><label for="reach">Reach</label><output id="reach-o">300px</output>
+          <input type="range" id="reach" min="20" max="420" value="300"></div>
+        <div class="ctl"><label for="bands">Bands</label><output id="bands-o">7</output>
+          <input type="range" id="bands" min="2" max="7" value="7"></div>
+        <div class="ctl"><label for="fall">Falloff</label><output id="fall-o">0.80</output>
+          <input type="range" id="fall" min="80" max="320" value="80"></div>
+        <div class="ctl ps"><label for="inten">Intensity</label><output id="inten-o">0.58</output>
+          <input type="range" id="inten" min="10" max="100" value="58"></div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">Top veil</div>
+        <div class="swatchrow ps"><label for="vc">Colour</label>
+          <span class="val" id="vc-v">#1500FF</span><input type="color" id="vc" value="#1500ff"></div>
+        <div class="ctl"><label for="vend">Clear by</label><output id="vend-o">70%</output>
+          <input type="range" id="vend" min="10" max="100" value="70"></div>
+        <div class="ctl ps"><label for="vop">Strength</label><output id="vop-o">1.00</output>
+          <input type="range" id="vop" min="0" max="100" value="100"></div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">Noise displacement</div>
+        <div class="ctl"><label for="dscale">Amount</label><output id="dscale-o">20</output>
+          <input type="range" id="dscale" min="0" max="90" value="20"></div>
+        <div class="ctl"><label for="dfreq">Frequency</label><output id="dfreq-o">0.4000</output>
+          <input type="range" id="dfreq" min="0" max="100" value="100"></div>
+        <div class="ctl"><label for="doct">Octaves</label><output id="doct-o">3</output>
+          <input type="range" id="doct" min="1" max="5" value="3"></div>
+        <div class="ctl"><label for="dseed">Seed</label><output id="dseed-o">7</output>
+          <input type="range" id="dseed" min="0" max="99" value="7"></div>
+        <div class="seg" role="group" aria-label="Noise type">
+          <button type="button" id="n-frac" aria-pressed="true">FRACTAL</button>
+          <button type="button" id="n-turb" aria-pressed="false">TURBULENCE</button>
+        </div>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">Transition</div>
+        <div class="ctl"><label for="tdur">Duration</label><output id="tdur-o">900ms</output>
+          <input type="range" id="tdur" min="80" max="3000" step="20" value="900"></div>
+        <label for="tease" style="font-size:13px;color:var(--ink-soft)">Easing</label>
+        <select id="tease">
+          <option value="cubic-bezier(0.34, 1.56, 0.64, 1)" selected>overshoot</option>
+          <option value="cubic-bezier(0.22, 1, 0.36, 1)">out-quint</option>
+          <option value="cubic-bezier(0.65, 0, 0.35, 1)">in-out-cubic</option>
+          <option value="cubic-bezier(0.4, 0, 1, 1)">in-quad</option>
+          <option value="linear">linear</option>
+        </select>
+        <div class="ctl"><label for="tlag">Star lag</label><output id="tlag-o">0ms</output>
+          <input type="range" id="tlag" min="0" max="900" step="10" value="0"></div>
+        <div class="ctl"><label for="tcol">Star collapse</label><output id="tcol-o">0.83</output>
+          <input type="range" id="tcol" min="40" max="130" value="83"></div>
+        <p class="hint">Opacity clamps at 0 and 1, so overshoot reads on the star&rsquo;s scale rather than the crossfade. The star is layer-promoted, which is what stops its grain reseeding while it moves.</p>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">Star</div>
+        <div class="ctl"><label for="sw">Size</label><output id="sw-o">84%</output>
+          <input type="range" id="sw" min="15" max="200" value="84"></div>
+        <div class="ctl"><label for="sx">X</label><output id="sx-o">27%</output>
+          <input type="range" id="sx" min="-20" max="120" value="27"></div>
+        <div class="ctl"><label for="sy">Y</label><output id="sy-o">22%</output>
+          <input type="range" id="sy" min="-20" max="120" value="22"></div>
+        <div class="ctl"><label for="srot">Rotation</label><output id="srot-o">-4&deg;</output>
+          <input type="range" id="srot" min="-180" max="180" value="-4"></div>
+        <div class="ctl"><label for="sdisp">Texture warp</label><output id="sdisp-o">220</output>
+          <input type="range" id="sdisp" min="0" max="220" value="220"></div>
+        <div class="ctl"><label for="sgrain">Grain</label><output id="sgrain-o">0.33</output>
+          <input type="range" id="sgrain" min="0" max="100" value="33"></div>
+        <div class="seg ps" role="group" aria-label="Star mode">
+          <button type="button" id="sm-paint" aria-pressed="false">PAINTED</button>
+          <button type="button" id="sm-knock" aria-pressed="true">KNOCKOUT</button>
+        </div>
+        <div class="seg" role="group" aria-label="Star fill">
+          <button type="button" id="sf-grad" aria-pressed="true">GRADIENT</button>
+          <button type="button" id="sf-white" aria-pressed="false">WHITE</button>
+        </div>
+        <div class="ctl ps"><label for="sfill">Fill opacity</label><output id="sfill-o">0.20</output>
+          <input type="range" id="sfill" min="0" max="100" value="20"></div>
+        <div class="ctl ps"><label for="sop">Opacity</label><output id="sop-o">0.70</output>
+          <input type="range" id="sop" min="0" max="100" value="70"></div>
+        <label for="sblend" class="ps" style="font-size:13px;color:var(--ink-soft);display:block">Blend mode</label>
+        <select id="sblend">
+          <option>normal</option><option>multiply</option><option>screen</option>
+          <option>overlay</option><option>darken</option><option>lighten</option>
+          <option>color-dodge</option><option>color-burn</option><option>hard-light</option>
+          <option>soft-light</option><option>difference</option><option>exclusion</option>
+          <option>hue</option><option>saturation</option><option>color</option>
+          <option>luminosity</option><option selected>plus-lighter</option>
+        </select>
+        <p class="hint">Painted draws the star over the stack with its own gradient. Knockout cuts the star out of both gradient layers so the Edge colour shows through from underneath &mdash; same texture, but the colour cannot drift from the vignette because it is the same paint. Fill opacity becomes how deep the cut goes.</p>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">Noise</div>
+        <div class="seg" role="group" aria-label="Noise tone">
+          <button type="button" id="g-mono" aria-pressed="false">MONO</button>
+          <button type="button" id="g-duo" aria-pressed="false">DUO</button>
+          <button type="button" id="g-multi" aria-pressed="true">MULTI</button>
+        </div>
+        <div class="swatchrow ps" id="row-mono" hidden><label for="gm">Grain</label>
+          <span class="val" id="gm-v">#FFFFFF</span><input type="color" id="gm" value="#ffffff"></div>
+        <div class="swatchrow ps" id="row-d1" hidden><label for="gd1">Low</label>
+          <span class="val" id="gd1-v">#1500FF</span><input type="color" id="gd1" value="#1500ff"></div>
+        <div class="swatchrow ps" id="row-d2" hidden><label for="gd2">High</label>
+          <span class="val" id="gd2-v">#C9BEFF</span><input type="color" id="gd2" value="#c9beff"></div>
+        <div class="ctl"><label for="gsize">Grain size</label><output id="gsize-o">1.0px</output>
+          <input type="range" id="gsize" min="10" max="120" value="10"></div>
+        <div class="ctl ps"><label for="gden">Density</label><output id="gden-o">0.66</output>
+          <input type="range" id="gden" min="0" max="200" value="66"></div>
+        <div class="ctl ps"><label for="gcon">Contrast</label><output id="gcon-o">4.00</output>
+          <input type="range" id="gcon" min="10" max="400" value="400"></div>
+        <div class="ctl ps"><label for="gop">Opacity</label><output id="gop-o">0.15</output>
+          <input type="range" id="gop" min="0" max="100" value="15"></div>
+        <label for="gblend" class="ps" style="font-size:13px;color:var(--ink-soft);display:block">Blend mode</label>
+        <select id="gblend">
+          <option>normal</option><option>multiply</option><option>screen</option>
+          <option>overlay</option><option>darken</option><option>lighten</option>
+          <option selected>color-dodge</option><option>color-burn</option><option>hard-light</option>
+          <option>soft-light</option><option>difference</option><option>exclusion</option>
+          <option>hue</option><option>saturation</option><option>color</option>
+          <option>luminosity</option><option>plus-lighter</option>
+        </select>
+        <p class="hint">Dodging against black returns black, so the resting screen needs its own tone and blend &mdash; mono on overlay is the usual answer.</p>
+      </div>
+
+      <div class="grp">
+        <div class="grp-h">Shape</div>
+        <div class="ctl"><label for="rad">Corner radius</label><output id="rad-o">61px</output>
+          <input type="range" id="rad" min="0" max="120" value="61"></div>
+      </div>
+
+    </aside>
+  </div>
+
+  <section>
+    <div class="code-head">
+      <h2>Live CSS &mdash; <span id="which">model&rsquo;s turn</span></h2>
+      <button class="copy" id="copy" type="button">Copy</button>
+    </div>
+    <pre><code id="out"></code></pre>
+  </section>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="starPaths"><path fill-rule="evenodd" clip-rule="evenodd" d="M457.402 0.0133769C459.573 0.0532654 461.857 0.932399 463.333 2.00418C464.717 2.96985 465.703 4.16159 466.254 4.94129C468.504 8.36504 468.716 10.2108 469.256 12.1457C470.089 15.7857 470.396 18.8629 470.68 21.939C471.201 28.0451 471.382 33.8465 471.571 39.6331C471.938 51.1437 472.127 62.5202 473.201 73.334C474.304 84.7913 474.398 95.0493 475.703 105.365C478.222 126.545 480.919 147.859 484.306 168.696C486.687 183.095 486.738 196.401 489.142 209.003C490.957 218.975 493.726 229.256 496.302 239.749C497.024 242.744 498.108 245.341 499.41 247.15C499.757 247.15 500.317 247.13 500.968 246.99C503.14 246.551 506.055 245.373 508.956 244.017C514.877 241.289 520.909 237.7 528.522 234.911C556.871 228.103 581.482 225.131 607.683 219.582C625.996 216.173 641.971 210.548 662.532 206.593C663.373 206.538 664.172 206.404 665.917 206.816C666.866 207.089 668.158 207.509 669.568 209.012C670.955 210.526 671.43 212.436 671.447 213.753C671.422 216.065 670.871 216.914 670.565 217.681C670.228 218.397 669.923 218.906 669.621 219.377C668.448 221.15 667.441 222.273 666.406 223.457C664.352 225.759 662.354 227.778 660.368 229.804C656.449 233.81 652.375 237.823 649.45 241.597C641.198 252.866 634.449 266.495 626.91 279.619C620.635 290.098 613.801 299.302 606.837 308.705C599.332 318.745 591.459 328.392 583.638 337.995C577.677 345.326 571.709 352.617 566.139 360.082C566.118 360.11 566.061 360.181 566.041 360.207C559.972 367.593 554.736 375.349 548.764 383.311C548.733 383.354 548.636 383.477 548.604 383.516C548.16 384.025 547.709 384.584 547.241 385.159C547.279 385.17 547.993 385.487 547.357 385.185C548.206 385.486 548.905 386.113 549.307 386.917C549.145 386.665 550.014 387.665 550.706 388.23C551.449 388.882 552.277 389.563 553.146 390.301C557.886 394.287 561.569 399.238 565.159 403.594C565.253 403.719 565.502 404.097 565.569 404.236C569.715 412.752 573.51 419.689 579.444 426.055C581.185 427.978 583.031 429.838 584.947 431.652C602.893 448.585 622.321 464.185 641.417 480.351C658.371 494.881 675.855 508.019 693.007 523.73C703.858 534.183 714.324 544.44 724.684 556.163C730.946 563.547 737.5 570.921 743.938 578.517C747.154 582.316 750.367 586.18 753.502 590.274C755.071 592.331 756.632 594.445 758.151 596.782C758.932 597.994 759.657 599.174 760.431 600.675C761.152 602.266 762.09 603.532 762.506 607.308C762.572 608.445 762.679 609.802 762.363 611.843C762.177 612.877 761.915 614.159 760.965 615.851C760.088 617.511 757.874 619.672 755.426 620.404C744.721 623.675 734.972 623.26 724.675 620.27C715.616 617.373 707.793 613.515 700.14 610.736C693.11 608.124 683.899 605.919 675.401 600.585C665.955 594.731 656.034 589.223 646.093 583.579C635.57 577.692 622.373 573.579 609.58 568.938C594.943 563.75 580.572 557.971 566.406 551.788C555.689 547.116 545.062 542.175 534.595 537.219C512.61 528.33 487.013 518.501 464.375 506.937C454.976 502.198 445.848 498.332 435.602 493.171C426.138 488.209 416.831 479.944 414.023 480.432C405.124 480.215 397.327 479.426 393.63 481.762C388.459 484.543 383.661 489.53 377.181 494.787C369.619 500.582 363.406 505.315 357.865 511.606C340.945 529.706 323.917 546.034 307.878 563.724C292.934 580.02 278.843 596.2 263.048 612.753C247.351 627.767 231.277 642.816 217.541 658.988C216.093 660.759 214.649 662.541 213.213 664.327C206.99 671.872 201.457 679.839 193.576 687.065C189.121 690.804 184.98 694.162 179.781 697.144C179.315 698.168 178.777 699.361 178.089 700.804C175.917 705.36 170.468 707.293 165.924 705.116C161.383 702.938 159.461 697.475 161.632 692.921C163.579 688.836 164.063 687.662 164.419 686.619C165.235 683.78 165.824 680.705 166.352 677.37L166.556 676.424C167.669 672.277 169.396 668.032 170.671 664.675C172.052 661.037 173.074 658.04 173.547 655.23C174.653 648.653 175.604 639.221 179.398 630.064C183.965 619.045 186.698 609.821 187.493 602.273C188.524 592.494 190.177 578.984 197.655 565.295C203.941 553.787 207.915 547.112 211.138 541.075C214.148 535.436 215.589 531.977 216.356 528.461C219.15 515.665 225.721 503.82 234.586 485.708C242.213 470.124 246.735 459.556 249.788 452.007C252.678 444.859 254.657 439.324 256.663 435.223C257.637 433.232 258.71 431.2 259.797 429.197C255.545 428.974 250.09 428.629 242.966 428.099C215.697 426.072 164.579 421.555 133.935 418.27C103.342 414.991 92.873 412.824 85.525 411.852C60.0197 408.475 23.8609 403.166 10.6294 402.058C5.6116 401.638 1.88471 397.224 2.30275 392.193C2.72191 387.163 7.12552 383.428 12.1434 383.846C14.832 384.071 18.4082 384.468 22.6074 384.971C32.8473 382.017 42.0392 380.139 52.3162 377.294C58.1091 375.806 63.9343 374.34 69.7533 372.884C117.876 360.865 166.186 349.441 214.219 337.611C233.348 332.5 253.738 328.81 269.593 319.891C287.65 310.108 305.773 300.293 322.617 289.35C332.025 283.579 335.634 269.536 344.16 255.462C353.672 240.329 361.983 224.491 369.692 208.191C379.791 186.723 390 164.604 398.376 143.244C406.029 121.902 413.581 100.377 420.72 78.9225C426.609 61.0769 432.662 43.408 438.371 25.6618C440.138 20.2666 441.987 15.0444 444.765 9.41391C445.148 8.65675 445.563 7.87664 446.066 7.02137C446.325 6.58212 446.598 6.13327 446.974 5.58407C447.476 4.95824 447.434 4.6111 449.494 2.80765C450.265 2.20339 451.039 1.65658 452.228 1.09359C453.572 0.490743 455.091 -0.0312384 457.402 0.0133769Z"/><path d="M473.639 508.115C494.777 518.518 515.254 526.126 535.865 534.079L536.045 534.158C546.511 538.908 557.059 543.574 568.004 548.123C581.574 553.761 595.754 559.268 611.122 564.587L611.154 564.599C622.711 568.783 635.44 572.371 648.375 579.5L648.4 579.514C649.966 580.413 651.546 581.319 653.141 582.236C662.3 587.489 670.448 592.234 677.712 596.857L677.733 596.87C685.385 601.806 693.586 603.944 701.538 606.976L701.51 606.965C710.487 610.459 717.912 614.259 725.759 616.88L725.668 616.852C734.662 619.673 744.208 620.502 754.517 617.429L754.534 617.424C755.776 617.125 757.614 615.641 758.279 614.431L758.316 614.363C758.878 613.376 759.18 612.584 759.408 611.311L759.396 611.384C759.608 610.095 759.641 609.028 759.542 607.481L759.555 607.633C759.451 606.623 759.289 605.659 759.029 604.8C758.773 603.92 758.394 603.23 757.765 601.883L757.829 602.016C757.208 600.789 756.513 599.612 755.709 598.356L755.715 598.366C754.372 596.275 752.859 594.184 751.215 592.018C748.368 588.276 745.2 584.424 741.761 580.36C738.342 576.322 734.663 572.095 730.746 567.598C727.984 564.425 725.221 561.24 722.491 558.022L722.529 558.067C712.509 546.717 701.742 536.098 691.059 525.752L691.11 525.8C673.899 509.94 655.75 496.128 639.779 482.264L639.79 482.273C617.7 463.503 597.836 447.039 583.39 433.303C581.367 431.391 579.481 429.487 577.751 427.588L577.773 427.612C574.524 424.151 571.986 420.612 569.938 417.361C567.201 413 565.19 408.961 563.398 405.293C563.46 405.414 563.426 405.345 563.413 405.326C563.395 405.297 563.37 405.257 563.345 405.218C563.3 405.147 563.214 405.023 563.223 405.034L563.297 405.129C558.979 399.796 555.621 395.409 551.703 392.016L551.694 392.009C550.904 391.312 550.091 390.621 549.266 389.871L549.325 389.921C548.969 389.62 548.703 389.352 548.443 389.087C548.315 388.955 548.191 388.824 548.074 388.7C548.016 388.639 547.959 388.578 547.912 388.528C547.891 388.505 547.865 388.479 547.868 388.48C547.882 388.49 547.842 388.464 547.996 388.587C548.009 388.597 548.063 388.638 548.138 388.686C548.177 388.711 548.226 388.741 548.295 388.778C548.332 388.797 548.367 388.814 548.424 388.84C548.552 388.893 548.722 388.972 549.075 389.012C549.402 389.049 550.09 389.019 550.69 388.502C551.319 387.899 551.326 387.546 551.405 387.225C551.484 386.614 551.373 386.406 551.336 386.243C551.275 386.061 551.282 386.094 551.261 386.04C551.245 386.004 551.232 385.975 551.22 385.95C551.119 385.755 551.133 385.795 551.111 385.757L547.389 387.877C547.251 387.557 546.977 387.286 546.66 387.157L548.254 383.297C548.311 383.325 548.365 383.352 548.429 383.385C548.46 383.401 548.489 383.415 548.554 383.449C548.573 383.46 548.587 383.466 548.665 383.51C548.697 383.53 548.733 383.55 548.825 383.614C548.825 383.626 548.913 383.633 549.228 383.988C549.311 384.093 549.425 384.231 549.549 384.526C549.664 384.806 549.816 385.362 549.58 386.024C549.364 386.683 548.726 387.118 548.51 387.2C548.28 387.307 548.106 387.346 547.972 387.37C547.456 387.438 547.363 387.376 547.247 387.367C547.149 387.349 547.09 387.332 547.064 387.325C546.935 387.288 546.911 387.276 546.89 387.269C546.811 387.239 546.802 387.234 546.776 387.223C546.693 387.188 546.642 387.164 546.585 387.139C546.558 387.127 546.532 387.115 546.508 387.104C546.496 387.099 546.485 387.094 546.477 387.09C546.473 387.088 546.47 387.087 546.472 387.087C546.473 387.088 546.475 387.088 546.484 387.092C546.501 387.097 546.473 387.091 546.62 387.14L543.701 386.236L545.631 383.848C546.086 383.313 546.553 382.754 547.072 382.18L547.041 382.216C547.036 382.227 547.142 382.094 547.121 382.124L547.143 382.094C552.129 375.809 557.084 368.583 564.809 359.195L564.768 359.247C564.824 359.175 564.827 359.173 564.845 359.151C564.854 359.14 564.885 359.098 564.842 359.157L564.862 359.129C569.583 352.885 575.371 345.747 582.443 337.023C582.633 336.79 582.822 336.556 583.013 336.32C591.326 326.063 598.845 316.742 605.565 307.753C613.004 297.749 619.825 288.464 625.623 278.848L625.61 278.872C632.996 266.218 639.329 253.3 648.469 240.879L648.488 240.852C651.829 236.653 655.721 232.951 659.592 229.045C661.623 227.008 663.676 224.963 665.651 222.783L665.644 222.791C665.725 222.7 665.805 222.61 665.885 222.519C666.899 221.391 667.893 220.217 668.811 218.841L668.804 218.853C669.138 218.344 669.431 217.835 669.7 217.273L669.677 217.327C670.288 216.073 670.495 215.113 670.519 213.743V213.765C670.502 212.34 669.953 210.769 668.908 209.617L668.915 209.624C668.042 208.673 667.021 208.009 665.677 207.651L665.717 207.661C664.66 207.4 663.776 207.321 662.588 207.44L662.693 207.426C647.124 210.102 628.582 216.221 607.794 220.178L607.809 220.175C582.578 225.449 554.644 229.007 528.619 235.315L528.665 235.301C521.795 237.766 515.531 241.382 509.118 244.368C506.494 245.57 503.868 246.745 501.043 247.361C500.507 247.476 499.955 247.528 499.41 247.527L499.219 247.529L499.104 247.371C497.483 245.064 496.581 242.437 495.941 239.836C493.234 228.816 490.496 218.506 488.788 209.068C486.936 199.077 486.49 190.148 485.725 182.944C485.258 178.245 484.71 173.504 483.926 168.759C480.53 147.839 477.866 126.109 475.472 105.393C474.14 94.3613 474.063 83.5444 473.071 73.3465C471.931 61.2203 471.851 49.8126 471.522 39.6347C471.38 34.9961 471.238 30.6083 470.986 26.5177C470.891 24.9469 470.781 23.4216 470.657 21.9411C470.351 18.4095 469.936 15.1312 469.243 12.1485C468.645 9.39316 467.621 6.95096 466.25 4.9444C465.407 3.75857 464.412 2.76334 463.332 2.00647C462.806 1.625 462.249 1.31392 461.69 1.05358C458.891 -0.181 457.38 0.0612114 457.402 0.0133769C457.353 0.0743364 459.768 -0.255383 463.12 1.85106C463.192 1.89976 463.265 1.95072 463.335 2.00174C464.436 2.77084 465.427 3.77136 466.259 4.93822C467.671 6.99465 468.675 9.4579 469.266 12.1429C469.982 15.2025 470.392 18.4918 470.7 21.9373C471.181 27.4451 471.404 33.3658 471.613 39.6317C471.981 49.991 472.118 61.3259 473.32 73.3221C473.552 75.6523 473.749 78.0072 473.926 80.3952C474.608 89.8451 474.966 98.0333 475.935 105.336C478.96 129.772 480.881 145.191 484.654 168.64C486.665 179.633 486.708 192.697 489.561 208.923C490.869 216.024 492.774 223.706 494.939 232.187C495.578 234.693 496.21 237.17 496.822 239.622C497.468 242.214 498.394 244.748 499.872 246.817L499.409 246.58C499.899 246.578 500.38 246.529 500.846 246.426C503.561 245.818 506.172 244.634 508.696 243.459C515.329 240.304 521.601 236.664 528.272 234.23L528.353 234.205C555.446 227.499 580.745 224.191 607.437 218.422L607.466 218.416C624.666 215.181 642.135 209.115 662.269 205.226L662.442 205.204C663.502 205.069 665.081 205.149 666.238 205.455L666.302 205.472C667.825 205.842 669.5 206.834 670.593 208.051L670.604 208.063C672.015 209.615 672.802 211.601 672.859 213.735V213.768C672.897 215.162 672.464 217.096 671.88 218.206L671.846 218.285C671.55 218.918 671.188 219.564 670.815 220.142L670.803 220.159C669.824 221.663 668.624 223.096 667.476 224.391L667.466 224.402C665.524 226.585 663.455 228.688 661.383 230.798C657.738 234.544 653.87 238.257 650.562 242.459L650.586 242.429C650.476 242.579 650.366 242.729 650.256 242.88C640.862 256.043 634.722 269.006 628.175 280.346L628.161 280.368C621.646 291.338 614.761 300.673 608.203 309.716C600.763 319.856 593.209 329.334 585.255 339.312C579.693 346.308 573.887 353.506 568.02 361.486L568.05 361.445C567.949 361.584 567.952 361.574 567.925 361.609C567.911 361.627 567.874 361.676 567.916 361.621L567.856 361.698C562.297 368.545 557.012 376.423 550.78 384.823L550.807 384.787C550.664 384.979 550.673 384.966 550.542 385.128L550.504 385.173C550.088 385.655 549.657 386.194 549.203 386.756L547.998 382.745C548.182 382.806 548.159 382.803 548.186 382.812C548.205 382.82 548.214 382.823 548.223 382.827C548.241 382.834 548.25 382.838 548.262 382.843C548.282 382.851 548.298 382.858 548.314 382.865C548.344 382.878 548.371 382.889 548.398 382.9C548.448 382.922 548.505 382.946 548.525 382.953C548.524 382.953 548.54 382.959 548.479 382.936C548.459 382.929 548.444 382.921 548.31 382.881C548.294 382.877 548.271 382.869 548.187 382.849C548.104 382.833 548.012 382.803 547.729 382.787C547.581 382.785 547.385 382.768 546.983 382.866C546.882 382.892 546.767 382.928 546.635 382.984C546.569 383.012 546.499 383.045 546.425 383.084C546.321 383.14 546.191 383.22 546.065 383.318C545.536 383.68 545.05 384.621 545.089 385.313C545.1 386.009 545.315 386.376 545.444 386.608C545.583 386.839 545.69 386.955 545.773 387.046C545.937 387.218 546.022 387.278 546.089 387.33C546.274 387.466 546.279 387.46 546.327 387.49C546.423 387.546 546.417 387.54 546.429 387.547C546.454 387.56 546.425 387.545 546.41 387.538C546.37 387.519 546.322 387.496 546.271 387.473L548.201 382.798C549.664 383.31 550.888 384.399 551.58 385.781L547.171 388.293C547.156 388.269 547.138 388.242 547.118 388.207C547.098 388.173 547.072 388.134 547.008 388.006C546.993 387.975 546.976 387.939 546.957 387.894C546.948 387.872 546.937 387.848 546.927 387.821C546.917 387.797 546.903 387.764 546.871 387.667C546.825 387.481 546.706 387.251 546.764 386.581C546.784 386.413 546.824 386.212 546.909 385.985C547 385.758 547.095 385.522 547.415 385.16C548.029 384.471 548.946 384.304 549.387 384.338C549.862 384.363 550.093 384.465 550.263 384.53C550.41 384.593 550.402 384.593 550.46 384.621C550.547 384.666 550.609 384.704 550.659 384.736C550.754 384.796 550.83 384.854 550.848 384.868C551.069 385.044 551.055 385.045 551.103 385.087C551.171 385.152 551.208 385.189 551.244 385.225C551.315 385.297 551.374 385.357 551.431 385.415C551.546 385.532 551.653 385.64 551.758 385.743C551.965 385.947 552.174 386.143 552.316 386.257L552.385 386.315C553.136 386.969 553.961 387.643 554.8 388.353L554.79 388.345C559.471 392.243 563.25 397.189 567.149 401.954L567.228 402.055C567.391 402.279 567.444 402.365 567.539 402.511C567.583 402.579 567.627 402.648 567.676 402.729C567.731 402.822 567.763 402.861 567.89 403.115C571.428 410.358 575.289 417.879 581.299 424.326L581.323 424.353C582.992 426.207 584.782 428.029 586.671 429.832C592.315 435.202 598.395 440.72 604.906 446.445C618.864 458.695 631.538 469.12 642.802 478.716L642.812 478.724C662.982 495.908 680.082 508.802 694.617 521.972L694.661 522.013C706.097 532.805 716.652 542.901 726.935 554.174L726.975 554.22C733.172 561.297 739.727 568.426 746.59 576.269C749.818 579.967 753.14 583.835 756.441 588.024C758.084 590.117 759.758 592.327 761.346 594.706L761.355 594.719C762.206 595.998 763.094 597.429 763.87 598.902L763.955 599.077C764.29 599.779 765.095 601.217 765.549 602.665C766.025 604.119 766.273 605.524 766.438 606.875L766.455 607.077C766.592 608.552 766.608 610.682 766.326 612.456L766.309 612.554C766.084 614.137 765.404 616.269 764.503 617.838L764.552 617.748C762.596 621.063 760.395 623.022 756.611 624.365L756.634 624.358C746.826 627.614 734.844 627.89 723.45 624.491L723.336 624.456C716.982 622.485 710.676 619.787 704.311 617.199C702.398 616.426 700.493 615.68 698.593 614.999L698.561 614.987C690.72 612.197 681.339 609.796 672.942 604.502L672.964 604.516C663.594 598.742 653.739 593.29 643.783 587.648L643.808 587.663C633.053 581.721 620.48 577.904 607.985 573.333L608.018 573.345C593.31 568.118 578.794 562.253 564.567 556.002C553.757 551.257 543.133 546.279 532.671 541.283L532.91 541.388C508.591 531.496 484.455 522.021 462.465 510.676L462.485 510.686C452.926 505.822 443.101 501.572 433.774 496.799L433.715 496.769C429.633 494.599 425.982 492.128 422.49 489.731C420.746 488.532 419.047 487.343 417.403 486.271C416.586 485.739 415.769 485.231 415.045 484.842C414.686 484.648 414.345 484.487 414.121 484.402C414.018 484.361 413.938 484.341 413.974 484.348C414.01 484.347 414.17 484.415 414.701 484.333L413.927 484.391C407.037 484.239 398.757 483.394 395.705 485.047L395.471 485.184C390.044 488.181 384.989 493.502 379.593 497.759L379.509 497.825C372.209 503.37 365.627 508.466 360.715 514.116L360.639 514.199C358.068 516.95 355.58 519.573 353.192 522.072C346.143 529.45 338.699 537.004 331.069 544.858C324.383 551.743 317.556 558.865 310.785 566.359L310.77 566.376C296.585 581.884 281.991 598.69 265.955 615.528L265.826 615.658C250.701 630.179 234.852 644.902 220.616 661.6L220.664 661.542C219.225 663.301 217.788 665.072 216.353 666.853L216.322 666.892C210.169 674.356 204.174 682.837 196.278 690.012L196.146 690.127C191.783 693.79 187.069 697.575 181.755 700.586L183.392 698.789C182.839 699.999 182.262 701.262 181.663 702.508C178.82 708.84 170.465 711.839 164.228 708.657C157.898 705.78 154.976 697.457 158.124 691.249C159.085 689.225 160.172 687.044 160.762 685.37L160.705 685.552C161.511 682.782 162.073 679.816 162.567 676.771L162.607 676.559C162.676 676.244 162.745 675.929 162.815 675.614L162.859 675.431C164.034 671.133 165.662 667.152 167.136 663.333C167.935 661.252 168.694 659.199 169.253 657.221C169.504 656.333 169.712 655.461 169.859 654.609C171.178 646.437 172.389 637.302 176.023 628.665C179.588 620.03 182.873 610.986 183.918 601.896C185.135 589.198 187.862 575.613 194.532 563.589C198.913 555.515 203.65 547.45 208.006 539.404C210.095 535.46 212.063 531.576 212.89 527.704C216.539 511.742 224.742 498.201 231.404 484.15C236.776 473.173 241.925 462.037 246.517 450.685C248.808 445.131 250.735 439.508 253.507 433.68C254.538 431.579 255.622 429.538 256.717 427.525L259.613 432.698C253.959 432.392 248.331 431.998 242.708 431.572C205.911 428.681 169.284 425.302 133.603 421.373C125.249 420.431 116.98 419.42 108.778 418.275C101.046 417.227 93.0382 415.835 85.156 414.639C61.3164 411.383 36.0577 407.219 10.4345 404.385C4.35382 403.992 -0.616104 398.046 0.0621235 392.007C0.445218 385.982 6.32311 381.016 12.3232 381.692C15.873 382.017 19.3617 382.45 22.8571 382.886L22.0253 382.954C31.9615 380.138 42.0185 378.102 51.8037 375.443L51.8385 375.433C57.6721 373.971 63.5014 372.539 69.312 371.12C121.231 358.482 171.803 346.8 213.972 336.61L213.953 336.615C235.184 331.192 254.749 327.397 269.225 319.235L269.235 319.229C272.012 317.742 274.692 316.306 277.267 314.922C295.312 305.241 309.92 296.97 322.353 288.943L322.364 288.937C334.338 280.05 336.773 265.714 343.848 255.273C352.877 240.932 360.727 226.377 369.417 208.061C374.774 196.669 380.746 183.958 387.384 168.854C390.893 160.849 394.548 152.244 398.131 143.148C405.328 123.158 413.113 101.201 420.592 78.8799C426.538 60.9887 432.732 43.015 438.342 25.6525C440.051 20.4282 441.912 15.3142 444.224 10.5037C444.402 10.1317 444.58 9.76733 444.757 9.40961C445.186 8.56146 445.62 7.76366 446.059 7.01765C446.357 6.51273 446.658 6.03204 446.969 5.5807C447.697 4.40841 448.64 3.55443 449.492 2.80519C450.439 2.0496 451.369 1.4926 452.228 1.0923C455.633 -0.412758 457.497 0.10925 457.401 0.0133434C457.366 0.0837314 455.384 -0.33316 452.23 1.09659C451.363 1.50173 450.434 2.06318 449.498 2.81253C448.638 3.56997 447.702 4.42594 446.982 5.5904C446.672 6.0431 446.371 6.52408 446.076 7.0275C445.636 7.77816 445.204 8.57692 444.779 9.42079C443.743 11.5251 442.692 13.8746 441.668 16.4673C440.452 19.5404 439.401 22.6248 438.408 25.6738C431.943 45.8243 425.808 63.7703 420.846 78.9639C417.199 90.0011 413.968 99.5157 411.346 107.256C406.562 121.371 402.68 132.596 398.892 143.429L398.886 143.444C391.624 162.272 384.024 179.643 370.402 208.526C369.824 209.745 369.233 210.982 368.626 212.239C359.976 230.171 352.209 244.171 344.934 255.948L344.942 255.935C336.93 268.794 334.631 282.498 323.31 290.48L323.339 290.461C318.035 293.976 312.684 297.313 307.032 300.656C294.531 307.993 287.784 311.563 270.223 321.052L270.241 321.042C258.978 327.65 241.416 332.232 214.578 338.956L214.552 338.963C193.064 344.332 165.377 351.136 129.09 360.151C108.22 365.343 88.6456 370.254 70.2711 374.957C64.3455 376.476 58.5456 377.972 52.8737 379.464L52.9143 379.453C42.5974 382.371 32.6105 384.518 23.2774 387.294L22.3198 387.371C18.7981 386.973 15.3154 386.584 11.9367 386.315C8.33479 385.963 5.0129 388.989 4.85236 392.406C4.50544 395.978 7.48674 399.27 10.8499 399.428C39.4912 402.315 64.037 406.127 85.9249 408.83C103.93 411.593 119.688 413.527 134.287 414.993C145.426 416.126 155.75 417.078 165.358 417.942C185.224 419.71 212.366 422.184 243.23 424.549C248.71 424.958 254.305 425.349 259.984 425.654L265.591 425.936L262.916 430.891C261.854 432.842 260.815 434.803 259.845 436.78C257.444 441.792 255.402 447.622 253.056 453.328C248.485 464.621 243.258 475.95 237.721 487.242C231.071 501.179 222.979 514.811 219.748 529.202C218.633 534.298 216.35 538.624 214.205 542.713C209.697 551.052 205.062 558.958 200.736 566.979C194.921 577.573 192.405 589.352 191.268 601.07C191.213 601.593 191.159 602.126 191.106 602.653C190.084 612.181 186.835 621.712 182.851 631.494C179.871 638.637 178.661 646.785 177.3 655.861C176.661 659.592 175.433 662.852 174.249 666.034C172.774 669.917 171.281 673.661 170.277 677.422L170.321 677.238C170.253 677.554 170.186 677.869 170.118 678.185L170.158 677.972C169.661 681.128 169.082 684.374 168.139 687.688L168.082 687.869C167.139 690.518 166.133 692.44 165.136 694.592C163.884 697.058 165.051 700.455 167.613 701.596C170.057 702.843 173.413 701.673 174.547 699.116C175.108 697.937 175.645 696.753 176.205 695.515L176.727 694.368L177.826 693.736C182.443 691.101 186.681 687.719 191.036 684.039L190.906 684.153C197.935 677.761 203.636 669.753 210.139 661.792L210.109 661.83C211.549 660.036 212.996 658.246 214.451 656.462L214.499 656.405C228.942 639.403 245.093 624.37 260.241 609.819L260.11 609.95C276.287 592.948 291.035 575.963 304.805 560.905L304.789 560.923C311.906 553.039 318.832 545.823 325.253 539.187C333.431 530.748 340.781 523.233 346.955 516.705C349.647 513.863 352.191 511.149 354.596 508.55L354.507 508.648C361.415 500.798 368.56 495.751 374.42 491.184L374.321 491.261C380.315 486.477 385.055 481.366 391.521 477.842L391.253 477.999C396.991 475.042 400.596 475.926 404.218 475.803C407.768 475.9 410.991 476.128 414.125 476.257L413.309 476.317C415.435 476.069 416.179 476.559 416.97 476.803C417.718 477.097 418.283 477.391 418.829 477.689C419.9 478.281 420.82 478.88 421.715 479.477C423.492 480.672 425.143 481.871 426.822 483.065C430.158 485.44 433.547 487.833 437.307 489.918L437.254 489.89C444.987 494.039 454.17 498.149 465.797 504.117L465.812 504.124C468.279 505.424 470.883 506.753 473.639 508.115Z"/></g>
+  <filter id="warp" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+    <feTurbulence id="warpTurb" type="fractalNoise" baseFrequency="0.4" numOctaves="3" seed="7" result="n"></feTurbulence>
+    <feDisplacementMap id="warpDisp" in="SourceGraphic" in2="n" scale="20" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+  </filter>
+</defs></svg>
+
+<div class="toast" id="toast">Copied</div>
+
+<script>
+(function () {
+  var screenEl = document.getElementById('screen');
+  var out = document.getElementById('out');
+
+  /* ---------- shared geometry ---------- */
+  var SHARED = ['reach','bands','fall','vend','dscale','dfreq','doct','dseed',
+                'tdur','tlag','tcol','sw','sx','sy','srot','sdisp','sgrain','gsize','rad'];
+  var el = {};
+  SHARED.forEach(function (id) { el[id] = document.getElementById(id); el[id+'o'] = document.getElementById(id+'-o'); });
+  var tease = document.getElementById('tease');
+  var warpType = 'fractalNoise';
+
+  /* ---------- per-screen values ---------- */
+  var PS_RANGE  = ['inten','vop','sfill','sop','gden','gcon','gop'];
+  var PS_COLOR  = ['c1','cm','c2','vc','gm','gd1','gd2'];
+  var PS_SELECT = ['sblend','gblend'];
+  PS_RANGE.forEach(function (id) { el[id] = document.getElementById(id); el[id+'o'] = document.getElementById(id+'-o'); });
+  PS_COLOR.forEach(function (id) { el[id] = document.getElementById(id); });
+  PS_SELECT.forEach(function (id) { el[id] = document.getElementById(id); });
+
+  var sets = {
+    a: { c1:'#c9beff', cm:'#9e73f8', c2:'#1500ff', vc:'#1500ff',
+         gm:'#ffffff', gd1:'#1500ff', gd2:'#c9beff',
+         inten:58, vop:100, sfill:20, sop:70, gden:66, gcon:400, gop:15,
+         sblend:'plus-lighter', gblend:'color-dodge',
+         starFill:'grad', tone:'multi', starMode:'knock' },
+    b: { c1:'#484851', cm:'#232329', c2:'#000000', vc:'#000000',
+         gm:'#ffffff', gd1:'#232329', gd2:'#484851',
+         inten:58, vop:100, sfill:20, sop:70, gden:66, gcon:260, gop:7,
+         sblend:'plus-lighter', gblend:'overlay',
+         starFill:'grad', tone:'mono', starMode:'knock' }
+  };
+  var editing = 'a';
+
+  /* ---------- OKLab, so the ramp keeps its chroma ---------- */
+  function toLin(c) { c /= 255; return c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }
+  function toSrgb(c) { var v = c <= 0.0031308 ? c*12.92 : 1.055*Math.pow(c, 1/2.4) - 0.055;
+                       return Math.round(Math.min(1, Math.max(0, v))*255); }
+  function hexRgb(h) { h = h.replace('#',''); return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]; }
+  function rgbOklab(rgb) {
+    var r = toLin(rgb[0]), g = toLin(rgb[1]), b = toLin(rgb[2]);
+    var l = Math.cbrt(0.4122214708*r + 0.5363325363*g + 0.0514459929*b);
+    var m = Math.cbrt(0.2119034982*r + 0.6806995451*g + 0.1073969566*b);
+    var s = Math.cbrt(0.0883024619*r + 0.2817188376*g + 0.6299787005*b);
+    return [0.2104542553*l + 0.7936177850*m - 0.0040720468*s,
+            1.9779984951*l - 2.4285922050*m + 0.4505937099*s,
+            0.0259040371*l + 0.7827717662*m - 0.8086757660*s];
+  }
+  function oklabRgb(lab) {
+    var l = Math.pow(lab[0] + 0.3963377774*lab[1] + 0.2158037573*lab[2], 3);
+    var m = Math.pow(lab[0] - 0.1055613458*lab[1] - 0.0638541728*lab[2], 3);
+    var s = Math.pow(lab[0] - 0.0894841775*lab[1] - 1.2914855480*lab[2], 3);
+    return [toSrgb( 4.0767416621*l - 3.3077115913*m + 0.2309699292*s),
+            toSrgb(-1.2684380046*l + 2.6097574011*m - 0.3413193965*s),
+            toSrgb(-0.0041960863*l - 0.7034186147*m + 1.7076147010*s)];
+  }
+  function mix(a, b, t) {
+    var A = rgbOklab(a), B = rgbOklab(b);
+    return oklabRgb([A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t, A[2]+(B[2]-A[2])*t]);
+  }
+  function ramp3(edge, midc, core, t) {
+    return t <= 0.5 ? mix(edge, midc, t*2) : mix(midc, core, (t-0.5)*2);
+  }
+
+  function rimFor(S) {
+    var edge = hexRgb(S.c1), midc = hexRgb(S.cm), core = hexRgb(S.c2);
+    var n = +el.bands.value, reach = +el.reach.value;
+    var fall = +el.fall.value/100, inten = S.inten/100;
+    var list = [];
+    for (var i = 0; i < n; i++) {
+      var t = n === 1 ? 0 : i/(n-1);
+      var blur = Math.round(reach * Math.pow(t + 0.07, fall)) + 5;
+      var col = ramp3(edge, midc, core, Math.pow(t, 0.85) * 0.82);
+      var a = (inten * (0.95 - t*0.22)).toFixed(2);
+      list.push('inset 0 0 ' + blur + 'px rgba(' + col[0] + ', ' + col[1] + ', ' + col[2] + ', ' + a + ')');
+    }
+    return list;
+  }
+
+  function veilFor(S) {
+    var v = hexRgb(S.vc), a = (S.vop/100).toFixed(2);
+    return 'linear-gradient(180deg, rgba(' + v.join(', ') + ', ' + a + ') 0%, ' +
+           'rgba(' + v.join(', ') + ', 0) ' + el.vend.value + '%)';
+  }
+
+  function grainChain(S) {
+    var bf = (1 / (+el.gsize.value/10)).toFixed(4);
+    var C = (S.gcon/100).toFixed(2), D = (S.gden/100).toFixed(2);
+    var ic = (0.5 - 0.5*C).toFixed(3);
+    var o = '<feTurbulence type="fractalNoise" baseFrequency="' + bf + '" numOctaves="2" seed="4" stitchTiles="stitch" result="t"/>' +
+            '<feComponentTransfer in="t" result="c">' +
+              '<feFuncR type="linear" slope="' + C + '" intercept="' + ic + '"/>' +
+              '<feFuncG type="linear" slope="' + C + '" intercept="' + ic + '"/>' +
+              '<feFuncB type="linear" slope="' + C + '" intercept="' + ic + '"/>' +
+            '</feComponentTransfer>';
+    if (S.tone === 'mono') {
+      o += '<feColorMatrix in="c" type="matrix" result="a" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.33 0.33 0.34 0 0"/>' +
+           '<feComponentTransfer in="a" result="a2"><feFuncA type="linear" slope="' + D + '" intercept="0"/></feComponentTransfer>' +
+           '<feFlood flood-color="' + S.gm + '" result="f"/>' +
+           '<feComposite in="f" in2="a2" operator="in"/>';
+    } else if (S.tone === 'duo') {
+      var A = hexRgb(S.gd1), B = hexRgb(S.gd2);
+      var tv = function (i) { return (A[i]/255).toFixed(3) + ' ' + (B[i]/255).toFixed(3); };
+      o += '<feColorMatrix in="c" type="saturate" values="0" result="g"/>' +
+           '<feComponentTransfer in="g">' +
+             '<feFuncR type="table" tableValues="' + tv(0) + '"/>' +
+             '<feFuncG type="table" tableValues="' + tv(1) + '"/>' +
+             '<feFuncB type="table" tableValues="' + tv(2) + '"/>' +
+             '<feFuncA type="table" tableValues="' + D + ' ' + D + '"/>' +
+           '</feComponentTransfer>';
+    } else {
+      o += '<feComponentTransfer in="c"><feFuncA type="table" tableValues="' + D + ' ' + D + '"/></feComponentTransfer>';
+    }
+    return o;
+  }
+
+  var DISCRETE = '0 0 0 0 0 0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ' +
+                 '0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ' +
+                 '0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0';
+
+  function starChain() {
+    return '<feTurbulence type="fractalNoise" baseFrequency="0.999" numOctaves="3" seed="1424" result="warpNoise"/>' +
+      '<feDisplacementMap in="SourceGraphic" in2="warpNoise" scale="' + el.sdisp.value + '" ' +
+        'xChannelSelector="R" yChannelSelector="G" result="warped"/>' +
+      '<feTurbulence type="fractalNoise" baseFrequency="1.4286" stitchTiles="stitch" numOctaves="3" seed="8061" result="noise"/>' +
+      '<feComponentTransfer in="noise" result="cn">' +
+        '<feFuncR type="linear" slope="2" intercept="-0.5"/>' +
+        '<feFuncG type="linear" slope="2" intercept="-0.5"/>' +
+        '<feFuncB type="linear" slope="2" intercept="-0.5"/>' +
+        '<feFuncA type="discrete" tableValues="' + DISCRETE + '"/>' +
+      '</feComponentTransfer>' +
+      '<feComposite operator="in" in2="warped" in="cn" result="clipped"/>' +
+      '<feComponentTransfer in="clipped" result="grainLayer">' +
+        '<feFuncA type="table" tableValues="0 ' + (+el.sgrain.value/100).toFixed(2) + '"/>' +
+      '</feComponentTransfer>' +
+      '<feMerge><feMergeNode in="warped"/><feMergeNode in="grainLayer"/></feMerge>';
+  }
+
+  /* the star as a hole rather than a painted shape. userSpaceOnUse means the
+     mask is measured in the screen's own px, so it is rebuilt on resize. */
+  function buildMask(key, S) {
+    var K = key.toUpperCase();
+    var box = screenEl.getBoundingClientRect();
+    var W = Math.round(box.width) || 316, H = Math.round(box.height) || 684;
+    var m = document.getElementById('knockMask' + K);
+
+    /* build the nodes once and only ever update their attributes. recreating
+       them would hand the transition a brand-new element with no start value,
+       which is why the star used to jump instead of easing. */
+    var rect = m.querySelector('rect'), g = m.querySelector('g');
+    if (!g) {
+      m.innerHTML = '<rect x="0" y="0" fill="#fff"></rect>' +
+                    '<g fill="#000"><use href="#starPaths"></use></g>';
+      rect = m.querySelector('rect'); g = m.querySelector('g');
+    }
+
+    m.setAttribute('x', 0); m.setAttribute('y', 0);
+    m.setAttribute('width', W); m.setAttribute('height', H);
+    rect.setAttribute('width', W); rect.setAttribute('height', H);
+
+    var k = (W * (+el.sw.value / 100)) / 767;
+    var cx = (W * (+el.sx.value / 100)).toFixed(2);
+    var cy = (H * (+el.sy.value / 100)).toFixed(2);
+
+    g.setAttribute('filter', 'url(#starFx' + K + ')');
+    g.setAttribute('fill-opacity', (S.sfill / 100).toFixed(2));
+    g.style.willChange = 'transform';
+    g.style.transformOrigin = '0 0';
+    g.style.transform = 'translate(' + cx + 'px, ' + cy + 'px) rotate(' + el.srot.value + 'deg) ' +
+                        'scale(' + k.toFixed(5) + ') scale(var(--star-scale)) translate(-383.5px, -355px)';
+    g.style.transition = 'transform var(--tdur) var(--tease) var(--star-lag)';
+  }
+
+  function applySet(key) {
+    var S = sets[key], K = key.toUpperCase();
+    var layer = document.getElementById('layer-' + key);
+    layer.style.setProperty('--base-col', S.c1.toUpperCase());
+    layer.style.setProperty('--core', S.c2.toUpperCase());
+    layer.style.setProperty('--rim', rimFor(S).join(', '));
+    layer.style.setProperty('--veil', veilFor(S));
+    layer.style.setProperty('--star-op', (S.sop/100).toFixed(2));
+    layer.style.setProperty('--star-blend', S.sblend);
+
+    var g = document.getElementById('starG' + K);
+    g.setAttribute('fill', S.starFill === 'white' ? '#FFFFFF' : 'url(#starGrad' + K + ')');
+    g.setAttribute('fill-opacity', (S.sfill/100).toFixed(2));
+    document.getElementById('sg' + K + '0').setAttribute('stop-color', S.c2);
+    document.getElementById('sg' + K + '1').setAttribute('stop-color', S.cm);
+    document.getElementById('sg' + K + '2').setAttribute('stop-color', S.c1);
+    document.getElementById('starFx' + K).innerHTML = starChain();
+
+    buildMask(key, S);
+    var knock = document.getElementById('knock-' + key);
+    var wrap = layer.querySelector('.starwrap');
+    if (S.starMode === 'knock') {
+      knock.style.webkitMaskImage = 'url(#knockMask' + K + ')';
+      knock.style.maskImage = 'url(#knockMask' + K + ')';
+      wrap.style.display = 'none';
+    } else {
+      knock.style.webkitMaskImage = '';
+      knock.style.maskImage = '';
+      wrap.style.display = '';
+    }
+
+    document.getElementById('grain' + K).innerHTML = grainChain(S);
+    var gs = document.getElementById('grainSvg' + K);
+    gs.style.setProperty('--grain-op', (S.gop/100).toFixed(2));
+    gs.style.setProperty('--grain-blend', S.gblend);
+  }
+
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+  function render() {
+    /* shared readouts */
+    el.reacho.textContent = el.reach.value + 'px';
+    el.bandso.textContent = el.bands.value;
+    el.fallo.textContent  = (+el.fall.value/100).toFixed(2);
+    el.vendo.textContent  = el.vend.value + '%';
+    el.dscaleo.textContent = el.dscale.value;
+    el.dfreqo.textContent = (0.002 * Math.pow(200, +el.dfreq.value/100)).toFixed(4);
+    el.docto.textContent  = el.doct.value;
+    el.dseedo.textContent = el.dseed.value;
+    el.tduro.textContent  = el.tdur.value + 'ms';
+    el.tlago.textContent  = el.tlag.value + 'ms';
+    el.tcolo.textContent  = (+el.tcol.value/100).toFixed(2);
+    el.swo.textContent    = el.sw.value + '%';
+    el.sxo.textContent    = el.sx.value + '%';
+    el.syo.textContent    = el.sy.value + '%';
+    el.sroto.textContent  = el.srot.value + '\u00B0';
+    el.sdispo.textContent = el.sdisp.value;
+    el.sgraino.textContent = (+el.sgrain.value/100).toFixed(2);
+    el.gsizeo.textContent = (+el.gsize.value/10).toFixed(1) + 'px';
+    el.rado.textContent   = el.rad.value + 'px';
+
+    /* per-screen readouts, showing whichever set is being edited */
+    var S = sets[editing];
+    el.inteno.textContent = (S.inten/100).toFixed(2);
+    el.vopo.textContent   = (S.vop/100).toFixed(2);
+    el.sfillo.textContent = (S.sfill/100).toFixed(2);
+    el.sopo.textContent   = (S.sop/100).toFixed(2);
+    el.gdeno.textContent  = (S.gden/100).toFixed(2);
+    el.gcono.textContent  = (S.gcon/100).toFixed(2);
+    el.gopo.textContent   = (S.gop/100).toFixed(2);
+    ['c1','cm','c2','vc','gm','gd1','gd2'].forEach(function (k) {
+      document.getElementById(k + '-v').textContent = S[k].toUpperCase();
+    });
+
+    /* shared, screen-wide */
+    var s = screenEl.style;
+    s.setProperty('--r', el.rad.value + 'px');
+    s.setProperty('--bleed', Math.max(16, Math.round(+el.dscale.value * 1.4)) + 'px');
+    s.setProperty('--star-w', el.sw.value + '%');
+    s.setProperty('--star-x', el.sx.value + '%');
+    s.setProperty('--star-y', el.sy.value + '%');
+    s.setProperty('--star-rot', el.srot.value + 'deg');
+    s.setProperty('--star-collapse', (+el.tcol.value/100).toFixed(2));
+    s.setProperty('--tdur', el.tdur.value + 'ms');
+    s.setProperty('--tease', tease.value);
+    s.setProperty('--star-lag', el.tlag.value + 'ms');
+
+    document.getElementById('warpTurb').setAttribute('type', warpType);
+    document.getElementById('warpTurb').setAttribute('baseFrequency', el.dfreqo.textContent);
+    document.getElementById('warpTurb').setAttribute('numOctaves', el.doct.value);
+    document.getElementById('warpTurb').setAttribute('seed', el.dseed.value);
+    document.getElementById('warpDisp').setAttribute('scale', el.dscale.value);
+
+    applySet('a');
+    applySet('b');
+
+    /* code */
+    var rim = rimFor(S), K = editing.toUpperCase();
+    var css =
+'/* ' + (editing === 'a' ? "model's turn" : 'resting') + ' */\n' +
+'.field {\n' +
+'  border-radius: ' + el.rad.value + 'px;\n' +
+'  background: ' + S.c2.toUpperCase() + ';\n' +
+'  box-shadow:\n    ' + rim.join(',\n    ') + ';\n' +
+'  filter: url(#warp);\n}\n\n' +
+'.veil {\n  background:\n    ' + veilFor(S).replace('deg, ','deg,\n    ').replace(/%, /g,'%,\n    ') + ';\n}\n\n' +
+'.grain {\n  opacity: ' + (S.gop/100).toFixed(2) + ';\n  mix-blend-mode: ' + S.gblend + ';\n}\n' +
+'/* tone: ' + S.tone + ' \u00B7 grain size ' + (+el.gsize.value/10).toFixed(1) + 'px */\n\n' +
+'.starwrap {\n' +
+'  left: ' + el.sx.value + '%; top: ' + el.sy.value + '%; width: ' + el.sw.value + '%;\n' +
+'  transform: translate(-50%, -50%) rotate(' + el.srot.value + 'deg) scale(var(--star-scale));\n' +
+'  opacity: ' + (S.sop/100).toFixed(2) + ';\n' +
+'  mix-blend-mode: ' + S.sblend + ';\n' +
+'  will-change: transform;   /* keeps feTurbulence from reseeding mid-scale */\n}\n\n' +
+'/* crossfade: B sits over A, so the midpoint never dips */\n' +
+'.layer[data-set="b"] {\n' +
+'  opacity: 0;\n' +
+'  transition: opacity ' + el.tdur.value + 'ms ' + tease.value + ';\n}\n' +
+'.screen[data-state="rest"] .layer[data-set="b"] { opacity: 1; }\n' +
+'.screen[data-state="rest"] { --star-scale: ' + (+el.tcol.value/100).toFixed(2) + '; }';
+
+    out.innerHTML = esc(css)
+      .replace(/(\/\*[^*]*\*\/)/g, '<span class="c">$1</span>')
+      .replace(/\b(background|border-radius|box-shadow|filter|opacity|mix-blend-mode|transform|left|top|width|will-change|transition)(:)/g, '<span class="p">$1</span>$2');
+    out.dataset.raw = css;
+    document.getElementById('which').textContent = editing === 'a' ? "model\u2019s turn" : 'resting';
+  }
+
+  /* ---------- wiring ---------- */
+  SHARED.forEach(function (id) { el[id].addEventListener('input', render); });
+  tease.addEventListener('change', render);
+
+  PS_RANGE.forEach(function (id) {
+    el[id].addEventListener('input', function () { sets[editing][id] = +el[id].value; render(); });
+  });
+  PS_COLOR.forEach(function (id) {
+    el[id].addEventListener('input', function () { sets[editing][id] = el[id].value; render(); });
+  });
+  PS_SELECT.forEach(function (id) {
+    el[id].addEventListener('change', function () { sets[editing][id] = el[id].value; render(); });
+  });
+
+  function loadControls() {
+    var S = sets[editing];
+    PS_RANGE.forEach(function (id) { el[id].value = S[id]; });
+    PS_COLOR.forEach(function (id) { el[id].value = S[id]; });
+    PS_SELECT.forEach(function (id) { el[id].value = S[id]; });
+    ['grad','white'].forEach(function (k) {
+      document.getElementById('sf-' + k).setAttribute('aria-pressed', String(S.starFill === k));
+    });
+    ['paint','knock'].forEach(function (k) {
+      document.getElementById('sm-' + k).setAttribute('aria-pressed', String(S.starMode === k));
+    });
+    ['mono','duo','multi'].forEach(function (k) {
+      document.getElementById('g-' + k).setAttribute('aria-pressed', String(S.tone === k));
+    });
+    document.getElementById('row-mono').hidden = (S.tone !== 'mono');
+    document.getElementById('row-d1').hidden = (S.tone !== 'duo');
+    document.getElementById('row-d2').hidden = (S.tone !== 'duo');
+  }
+
+  ['grad','white'].forEach(function (k) {
+    document.getElementById('sf-' + k).addEventListener('click', function () {
+      sets[editing].starFill = k; loadControls(); render();
+    });
+  });
+  ['paint','knock'].forEach(function (k) {
+    document.getElementById('sm-' + k).addEventListener('click', function () {
+      sets[editing].starMode = k; loadControls(); render();
+    });
+  });
+  window.addEventListener('resize', render);
+  ['mono','duo','multi'].forEach(function (k) {
+    document.getElementById('g-' + k).addEventListener('click', function () {
+      sets[editing].tone = k; loadControls(); render();
+    });
+  });
+
+  var bFrac = document.getElementById('n-frac'), bTurb = document.getElementById('n-turb');
+  bFrac.addEventListener('click', function () { warpType = 'fractalNoise';
+    bFrac.setAttribute('aria-pressed','true'); bTurb.setAttribute('aria-pressed','false'); render(); });
+  bTurb.addEventListener('click', function () { warpType = 'turbulence';
+    bTurb.setAttribute('aria-pressed','true'); bFrac.setAttribute('aria-pressed','false'); render(); });
+
+  /* editing target also drives what you are looking at */
+  var edA = document.getElementById('ed-a'), edB = document.getElementById('ed-b');
+  function setEditing(k) {
+    editing = k;
+    edA.setAttribute('aria-pressed', String(k === 'a'));
+    edB.setAttribute('aria-pressed', String(k === 'b'));
+    loadControls();
+    setState(k === 'a' ? 'active' : 'rest', true);
+    render();
+  }
+  edA.addEventListener('click', function () { setEditing('a'); });
+  edB.addEventListener('click', function () { setEditing('b'); });
+
+  /* state */
+  var bRest = document.getElementById('st-rest'), bAct = document.getElementById('st-active');
+  var cycle = document.getElementById('cycle'), timer = null;
+  function setState(st, quiet) {
+    screenEl.dataset.state = st;
+    bRest.setAttribute('aria-pressed', String(st === 'rest'));
+    bAct.setAttribute('aria-pressed', String(st === 'active'));
+    if (!quiet) {
+      editing = (st === 'rest') ? 'b' : 'a';
+      edA.setAttribute('aria-pressed', String(editing === 'a'));
+      edB.setAttribute('aria-pressed', String(editing === 'b'));
+      loadControls(); render();
+    }
+  }
+  function stopCycle() { if (timer) { clearInterval(timer); timer = null; } }
+  bRest.addEventListener('click', function () { cycle.checked = false; stopCycle(); setState('rest'); });
+  bAct.addEventListener('click', function () { cycle.checked = false; stopCycle(); setState('active'); });
+  cycle.addEventListener('change', function () {
+    stopCycle();
+    if (cycle.checked) {
+      timer = setInterval(function () {
+        setState(screenEl.dataset.state === 'rest' ? 'active' : 'rest', true);
+      }, Math.max(1200, +el.tdur.value + +el.tlag.value + 1400));
+    }
+  });
+
+  var stage = document.getElementById('stage');
+  ['dark','mid','light'].forEach(function (k) {
+    document.getElementById('bg-' + k).addEventListener('click', function () {
+      stage.dataset.bg = k;
+      ['dark','mid','light'].forEach(function (o) {
+        document.getElementById('bg-' + o).setAttribute('aria-pressed', String(o === k));
+      });
+    });
+  });
+
+  var CLOSED = { 'ramp':1, 'top veil':1, 'noise displacement':1, 'shape':1 };
+  Array.prototype.forEach.call(document.querySelectorAll('.grp'), function (grp) {
+    var head = grp.querySelector('.grp-h');
+    if (!head) return;
+    head.setAttribute('tabindex','0'); head.setAttribute('role','button');
+    if (CLOSED[head.textContent.trim().toLowerCase()]) grp.classList.add('collapsed');
+    head.setAttribute('aria-expanded', String(!grp.classList.contains('collapsed')));
+    var toggle = function () {
+      grp.classList.toggle('collapsed');
+      head.setAttribute('aria-expanded', String(!grp.classList.contains('collapsed')));
+    };
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+
+  loadControls();
+  render();
+
+  var toast = document.getElementById('toast');
+  document.getElementById('copy').addEventListener('click', function () {
+    var done = function () { toast.classList.add('show');
+      setTimeout(function () { toast.classList.remove('show'); }, 1400); };
+    var t = out.dataset.raw || '';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(done, done);
+    } else { done(); }
+  });
+})();
+</script>
